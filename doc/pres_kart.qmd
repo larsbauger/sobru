@@ -1,0 +1,120 @@
+---
+title: "Presentasjon av NEET forekomst i vår region"
+author: "Lars Bauger"
+format:
+  html:
+    embed-resources: true
+editor: visual
+---
+
+## Kart over vår region
+
+```{r}
+# Loading libraries
+library(tidyverse)
+
+# loading data
+library(readxl)
+df <- read_excel(here::here("data/trial.xlsx"))
+
+
+
+# gjøre det om til longform
+df_long <- df |> 
+  pivot_longer(
+    cols = 3:57, # velger kommuner
+    names_to = "region",
+    values_to = "value"
+  ) |> 
+  pivot_wider(
+    names_from = cat,
+    values_from = value) |> 
+  janitor::clean_names() |> 
+      select(region, everything()) # Flytt municipality til første kolonne
+
+df_long <- df_long |> 
+  mutate(neet_tot_prop = (neet_tot_pop/tot_pop)*100,
+         neet_exc_imm_prop = (neet_pop_exc_imm/tot_pop_exc_imm)*100,
+         neet_immig_prop = (neet_pop_immig/tot_pop_immig)*100,
+         region = str_remove(region, "K-\\d{4} ")) #fjerner unødvendig tekst
+
+
+#LAge kart over regionen----
+
+
+norway <-  csmaps::nor_municip_map_b2024_default_sf
+region_usn <- norway |> 
+  filter(location_code >= "municip_nor3301" & location_code <= "municip_nor3338"|
+           location_code >= "municip_nor3901" & location_code <= "municip_nor3911"|
+           location_code >= "municip_nor4001" & location_code <= "municip_nor4036")
+
+
+
+# Lag en ny dataframe med kommunenavn og kommunenummer
+Sys.setlocale(locale = 'no_NB.utf8')
+kommuner <- tibble(
+  region = c("Drammen", "Kongsberg", "Ringerike", "Hole", "Lier", "Øvre Eiker", "Modum", "Krødsherad", "Flå", "Nesbyen", "Gol", "Hemsedal", "Ål", "Hol", "Sigdal", "Flesberg", "Rollag", "Nore og Uvdal", "Horten", "Holmestrand", "Tønsberg", "Sandefjord", "Larvik", "Færder", "Porsgrunn", "Skien", "Notodden", "Siljan", "Bamble", "Kragerø", "Drangedal", "Nome", "Midt-Telemark", "Seljord", "Hjartdal", "Tinn", "Kviteseid", "Nissedal", "Fyresdal", "Tokke", "Vinje"),
+  Kommunenr = c(3301, 3303, 3305, 3310, 3312, 3314, 3316, 3318, 3320, 3322, 3324, 3326, 3328, 3330, 3332, 3334, 3336, 3338, 3901, 3903, 3905, 3907, 3909, 3911, 4001, 4003, 4005, 4010, 4012, 4014, 4016, 4018, 4020, 4022, 4024, 4026, 4028, 4030, 4032, 4034, 4036)
+)
+
+# Legg til en kolonne med kommunenummer i df basert på location_code
+region_usn <- region_usn %>%
+  mutate(Kommunenr = as.numeric(str_extract(location_code, "\\d{4}")))
+
+# Slå sammen df med kommuner for å legge til kommunenavn
+region_usn <- region_usn |> 
+  left_join(kommuner, by = "Kommunenr")
+
+#slå sammen datasettet med neet data"
+df_desc <- left_join(df_long, region_usn)
+
+
+#lage kartet
+# Konverter til et romlig objekt
+library(mapview)
+library(leafpop)
+library(leaflet)
+library(sf)
+df_desc_sf <- st_as_sf(df_desc, sf_column_name = "geometry")
+
+df_desc_sf_2023 <-  df_desc_sf|> 
+  filter(!is.na(location_code) &
+           year ==2023) 
+
+df_desc_sf_2019 <- df_desc_sf|> 
+  filter(!is.na(location_code) &
+           year ==2019)
+  
+kart_2023 <- df_desc_sf_2023 |> 
+  mapview(zcol = c("neet_tot_prop", "region"),
+          legend = list(TRUE, FALSE),
+          popup = popupTable(
+            df_desc_sf_2023,
+            zcol = c(
+              "region",
+              "neet_tot_prop",
+              "neet_exc_imm_prop",
+              "neet_immig_prop"
+            )),
+          layer.name = "Andel av 15-29 år som er NEET 2023")
+kart_2023
+```
+
+\
+2019 data
+
+```{r}
+kart_2019 <- df_desc_sf_2019 |> 
+  mapview(zcol = c("neet_tot_prop", "region"),
+          legend = list(TRUE, FALSE),
+          popup = popupTable(
+            df_desc_sf_2019,
+            zcol = c(
+              "region",
+              "neet_tot_prop",
+              "neet_exc_imm_prop",
+              "neet_immig_prop"
+            )),
+          layer.name = "Andel av 15-29 år som er NEET 2019")
+kart_2019
+```
